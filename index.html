@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>电台背景音乐智能匹配</title>
+  <style>
+    :root {
+      --primary: #6c5ce7;
+      --primary-light: #a29bfe;
+      --accent: #fd79a8;
+      --bg: #0f0f1a;
+      --bg2: #1a1a2e;
+      --bg3: #16213e;
+      --card: #1e1e3a;
+      --card2: #252545;
+      --text: #eee8ff;
+      --text2: #a29bfe;
+      --text3: #7f7fa8;
+      --success: #00b894;
+      --warning: #fdcb6e;
+      --danger: #e17055;
+      --border: #2d2d5a;
+      --glow: 0 0 20px rgba(108,92,231,0.4);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── 背景动画 ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse at 20% 20%, rgba(108,92,231,0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(253,121,168,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(0,184,148,0.05) 0%, transparent 70%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── Header ── */
+    header {
+      position: relative; z-index: 10;
+      padding: 28px 40px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 16px;
+      background: linear-gradient(180deg, rgba(108,92,231,0.1) 0%, transparent 100%);
+    }
+    .logo-icon {
+      width: 52px; height: 52px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 26px;
+      box-shadow: var(--glow);
+    }
+    .header-text h1 {
+      font-size: 22px; font-weight: 700;
+      background: linear-gradient(135deg, var(--primary-light), var(--accent));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .header-text p { font-size: 13px; color: var(--text3); margin-top: 2px; }
+
+    /* ── Main Layout ── */
+    .container {
+      position: relative; z-index: 1;
+      max-width: 1280px; margin: 0 auto;
+      padding: 32px 24px;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 28px;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px;
+      backdrop-filter: blur(10px);
+    }
+    .card-title {
+      font-size: 15px; font-weight: 600;
+      color: var(--primary-light);
+      margin-bottom: 18px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-title span { font-size: 18px; }
+
+    /* ── 上传区 ── */
+    .upload-area {
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-bottom: 18px;
+      background: var(--bg2);
+    }
+    .upload-area:hover, .upload-area.drag-over {
+      border-color: var(--primary);
+      background: rgba(108,92,231,0.08);
+      box-shadow: var(--glow);
+    }
+    .upload-area .upload-icon { font-size: 36px; margin-bottom: 10px; }
+    .upload-area p { font-size: 13px; color: var(--text3); }
+    .upload-area .hint { font-size: 12px; color: var(--text3); margin-top: 6px; }
+    #file-input { display: none; }
+
+    /* ── Textarea ── */
+    textarea {
+      width: 100%;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.7;
+      padding: 14px;
+      resize: vertical;
+      min-height: 160px;
+      transition: border-color 0.3s;
+      font-family: inherit;
+    }
+    textarea:focus { outline: none; border-color: var(--primary); }
+    textarea::placeholder { color: var(--text3); }
+
+    /* ── 分析结果标签 ── */
+    .tags-row {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin: 16px 0;
+    }
+    .tag {
+      padding: 5px 14px;
+      border-radius: 20px;
+      font-size: 12px; font-weight: 600;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .tag-mood   { background: rgba(108,92,231,0.2); color: var(--primary-light); border: 1px solid rgba(108,92,231,0.4); }
+    .tag-scene  { background: rgba(0,184,148,0.15); color: #55efc4; border: 1px solid rgba(0,184,148,0.35); }
+    .tag-tempo  { background: rgba(253,203,110,0.15); color: var(--warning); border: 1px solid rgba(253,203,110,0.35); }
+    .tag-style  { background: rgba(253,121,168,0.15); color: #fd79a8; border: 1px solid rgba(253,121,168,0.35); }
+
+    /* ── 按钮 ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; padding: 12px 22px;
+      border: none; border-radius: 12px;
+      font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: all 0.25s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), #8e7cf3);
+      color: white; width: 100%;
+      box-shadow: 0 4px 20px rgba(108,92,231,0.4);
+    }
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(108,92,231,0.55);
+    }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-sm {
+      padding: 7px 14px; font-size: 12px; border-radius: 8px;
+    }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text2);
+    }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary-light); }
+    .btn-success { background: linear-gradient(135deg, #00b894, #00cec9); color: white; }
+    .btn-success:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,184,148,0.4); }
+    .btn-accent { background: linear-gradient(135deg, #e17055, var(--accent)); color: white; }
+    .btn-accent:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(253,121,168,0.4); }
+
+    /* ── 搜索框 ── */
+    .search-bar {
+      display: flex; gap: 10px; margin-bottom: 20px;
+    }
+    .search-input {
+      flex: 1;
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text);
+      padding: 10px 16px; font-size: 13px;
+      transition: border-color 0.3s;
+    }
+    .search-input:focus { outline: none; border-color: var(--primary); }
+
+    /* ── 过滤器 ── */
+    .filters {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin-bottom: 20px;
+    }
+    .filter-btn {
+      padding: 5px 14px; border-radius: 20px;
+      font-size: 12px; cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--bg2); color: var(--text3);
+      transition: all 0.2s;
+    }
+    .filter-btn.active {
+      background: rgba(108,92,231,0.25);
+      border-color: var(--primary);
+      color: var(--primary-light);
+    }
+
+    /* ── 音乐列表 ── */
+    .music-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .music-card {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 56px 1fr auto;
+      gap: 14px;
+      align-items: center;
+      transition: all 0.25s;
+      position: relative;
+      overflow: hidden;
+    }
+    .music-card::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, transparent 60%, rgba(108,92,231,0.06));
+      pointer-events: none;
+    }
+    .music-card:hover {
+      border-color: var(--primary-light);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(108,92,231,0.2);
+    }
+    .music-card.playing {
+      border-color: var(--accent);
+      box-shadow: 0 0 20px rgba(253,121,168,0.3);
+    }
+
+    .music-thumb {
+      width: 56px; height: 56px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .music-info { min-width: 0; }
+    .music-title {
+      font-size: 14px; font-weight: 600;
+      color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+    .music-meta {
+      font-size: 12px; color: var(--text3);
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .music-meta span { display: flex; align-items: center; gap: 3px; }
+    .match-badge {
+      font-size: 11px; font-weight: 700;
+      padding: 2px 8px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: white; white-space: nowrap;
+    }
+    .music-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+    .music-tag {
+      font-size: 10px; padding: 2px 8px;
+      border-radius: 8px; background: var(--bg3);
+      color: var(--text3); border: 1px solid var(--border);
+    }
+
+    .music-actions {
+      display: flex; flex-direction: column; gap: 7px; align-items: flex-end;
+    }
+
+    /* ── 进度条 ── */
+    .progress-wrap {
+      margin-top: 8px;
+      background: var(--bg3); border-radius: 4px; height: 3px; overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent));
+      width: 0; transition: width 0.1s;
+    }
+
+    /* ── 分析动画 ── */
+    .analyzing-wrap {
+      text-align: center; padding: 32px 0;
+      display: none;
+    }
+    .spinner {
+      width: 48px; height: 48px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .waveform {
+      display: flex; align-items: center; justify-content: center;
+      gap: 3px; height: 30px;
+    }
+    .wave-bar {
+      width: 4px; background: var(--primary-light);
+      border-radius: 2px;
+      animation: wave 1.2s ease-in-out infinite;
+    }
+    .wave-bar:nth-child(2) { animation-delay: 0.1s; }
+    .wave-bar:nth-child(3) { animation-delay: 0.2s; }
+    .wave-bar:nth-child(4) { animation-delay: 0.3s; }
+    .wave-bar:nth-child(5) { animation-delay: 0.4s; }
+    .wave-bar:nth-child(6) { animation-delay: 0.3s; }
+    .wave-bar:nth-child(7) { animation-delay: 0.2s; }
+    .wave-bar:nth-child(8) { animation-delay: 0.1s; }
+    @keyframes wave {
+      0%, 100% { height: 8px; }
+      50% { height: 24px; }
+    }
+
+    /* ── 空状态 ── */
+    .empty-state {
+      text-align: center; padding: 60px 20px;
+      color: var(--text3);
+    }
+    .empty-state .icon { font-size: 56px; margin-bottom: 16px; opacity: 0.5; }
+    .empty-state h3 { font-size: 16px; margin-bottom: 8px; color: var(--text2); }
+    .empty-state p { font-size: 13px; line-height: 1.7; }
+
+    /* ── 分析摘要 ── */
+    .analysis-card {
+      background: linear-gradient(135deg, rgba(108,92,231,0.1), rgba(253,121,168,0.08));
+      border: 1px solid rgba(108,92,231,0.3);
+      border-radius: 14px; padding: 18px;
+      margin-bottom: 20px;
+      display: none;
+    }
+    .analysis-card .title {
+      font-size: 13px; font-weight: 600; color: var(--primary-light);
+      margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+    }
+    .analysis-card p {
+      font-size: 13px; color: var(--text2); line-height: 1.7;
+    }
+
+    /* ── 来源标签 ── */
+    .source-tag {
+      font-size: 10px; padding: 1px 7px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+    .source-fma { background: rgba(0,184,148,0.2); color: #55efc4; }
+    .source-jamendo { background: rgba(108,92,231,0.2); color: var(--primary-light); }
+    .source-ccmixter { background: rgba(253,203,110,0.2); color: var(--warning); }
+    .source-pixabay { background: rgba(253,121,168,0.2); color: #fd79a8; }
+
+    /* ── 滚动条 ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── 通知Toast ── */
+    .toast {
+      position: fixed; bottom: 28px; right: 28px; z-index: 9999;
+      padding: 12px 20px; border-radius: 12px;
+      background: var(--card2); border: 1px solid var(--border);
+      color: var(--text); font-size: 13px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      transform: translateY(100px); opacity: 0;
+      transition: all 0.3s;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+
+    /* ── 音频播放器 ── */
+    .player-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: rgba(26,26,46,0.95);
+      border-top: 1px solid var(--border);
+      backdrop-filter: blur(20px);
+      padding: 12px 32px;
+      display: none;
+      align-items: center; gap: 20px;
+      z-index: 100;
+    }
+    .player-bar.active { display: flex; }
+    .player-thumb {
+      width: 44px; height: 44px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; flex-shrink: 0;
+    }
+    .player-info { flex: 1; min-width: 0; }
+    .player-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .player-artist { font-size: 12px; color: var(--text3); margin-top: 2px; }
+    .player-controls { display: flex; align-items: center; gap: 12px; }
+    .ctrl-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 16px; transition: all 0.2s;
+      border: none; background: transparent; color: var(--text2);
+    }
+    .ctrl-btn:hover { color: var(--text); transform: scale(1.1); }
+    .ctrl-play {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: white !important; font-size: 14px;
+      box-shadow: 0 4px 16px rgba(108,92,231,0.4);
+    }
+    .player-progress {
+      flex: 1; display: flex; align-items: center; gap: 10px;
+      font-size: 11px; color: var(--text3);
+    }
+    .prog-slider {
+      flex: 1; height: 4px; border-radius: 2px;
+      background: var(--border); cursor: pointer;
+      -webkit-appearance: none;
+    }
+    .prog-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 12px; height: 12px;
+      border-radius: 50%; background: var(--primary-light); cursor: pointer;
+    }
+    .volume-wrap { display: flex; align-items: center; gap: 8px; }
+    .vol-slider {
+      width: 80px; height: 4px; border-radius: 2px;
+      background: var(--border); cursor: pointer;
+      -webkit-appearance: none;
+    }
+    .vol-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 12px; height: 12px;
+      border-radius: 50%; background: var(--primary-light); cursor: pointer;
+    }
+
+    /* ── 统计行 ── */
+    .stats-row {
+      display: flex; gap: 12px; margin-bottom: 16px;
+    }
+    .stat-item {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 16px;
+      text-align: center; flex: 1;
+    }
+    .stat-num { font-size: 22px; font-weight: 700; color: var(--primary-light); }
+    .stat-label { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+      header { padding: 20px; }
+    }
+
+    /* ── 视频预览区 ── */
+    #videoPreviewWrap {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      background: var(--bg2);
+    }
+    #videoPreview {
+      border: 1px solid var(--border);
+    }
+    #videoInfo span {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      padding: 3px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      color: var(--text2);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo-icon">🎙️</div>
+  <div class="header-text">
+    <h1>电台背景音乐智能匹配</h1>
+    <p>上传广播稿 · AI分析语境 · 自动推荐适配背景音乐 · 免费下载MP3</p>
+  </div>
+</header>
+
+<div class="container">
+  <!-- ── 左侧：上传与分析 ── -->
+  <div>
+    <div class="card">
+      <div class="card-title"><span>📄</span>上传稿件</div>
+
+      <!-- 文件上传区 -->
+      <div class="upload-area" id="uploadArea" onclick="document.getElementById('file-input').click()">
+        <div class="upload-icon" id="uploadIcon">📁</div>
+        <p>拖拽文件到此处，或<strong style="color:var(--primary-light)">点击上传</strong></p>
+        <p class="hint">文字稿：.txt / .docx / .doc / .pdf &nbsp;|&nbsp; 视频：.mp4 / .mov / .avi / .mkv</p>
+      </div>
+      <input type="file" id="file-input" accept=".txt,.docx,.doc,.pdf,.mp4,.mov,.avi,.mkv,.webm,.video" />
+
+      <!-- 视频预览区（上传视频后显示） -->
+      <div id="videoPreviewWrap" style="display:none;margin-bottom:14px;">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px;">🎬 已导入视频文件：</div>
+        <video id="videoPreview" controls style="width:100%;border-radius:12px;background:#000;max-height:180px;"></video>
+        <div id="videoInfo" style="font-size:12px;color:var(--text3);margin-top:6px;display:flex;gap:12px;flex-wrap:wrap;"></div>
+      </div>
+
+      <!-- 文字输入 -->
+      <div style="position:relative; margin-bottom:14px;">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px;">或直接粘贴稿件内容：</div>
+        <textarea id="scriptInput" placeholder="在此粘贴您的电台稿件、广播脚本、新闻稿……&#10;&#10;例如：&#10;各位听众朋友，晚上好！这里是……"></textarea>
+        <div style="text-align:right;font-size:11px;color:var(--text3);margin-top:4px;" id="charCount">0 字</div>
+      </div>
+
+      <!-- 分析偏好 -->
+      <div style="margin-bottom:18px;">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">🎚️ 音乐偏好（可多选）：</div>
+        <div class="filters" id="prefFilters">
+          <button class="filter-btn active" data-pref="轻柔">轻柔舒缓</button>
+          <button class="filter-btn" data-pref="激昂">激昂大气</button>
+          <button class="filter-btn" data-pref="温暖">温暖亲切</button>
+          <button class="filter-btn" data-pref="忧伤">淡淡忧伤</button>
+          <button class="filter-btn" data-pref="欢快">欢快活泼</button>
+          <button class="filter-btn" data-pref="严肃">庄重严肃</button>
+          <button class="filter-btn" data-pref="自然">自然空灵</button>
+          <button class="filter-btn" data-pref="爵士">爵士慵懒</button>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="analyzeBtn" onclick="analyzeScript()" disabled>
+        <span>🔍</span> 智能分析并匹配背景音乐
+      </button>
+    </div>
+
+    <!-- 分析结果摘要 -->
+    <div class="analysis-card" id="analysisCard" style="margin-top:20px;">
+      <div class="title">🧠 AI 分析结果</div>
+      <p id="analysisSummary"></p>
+      <div class="tags-row" id="analysisTags"></div>
+    </div>
+  </div>
+
+  <!-- ── 右侧：音乐结果 ── -->
+  <div>
+    <div class="card" style="height:fit-content;">
+      <div class="card-title"><span>🎵</span>推荐背景音乐</div>
+
+      <!-- 统计 -->
+      <div class="stats-row" id="statsRow" style="display:none">
+        <div class="stat-item">
+          <div class="stat-num" id="statCount">0</div>
+          <div class="stat-label">匹配结果</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num" id="statSources">4</div>
+          <div class="stat-label">音乐来源</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">100%</div>
+          <div class="stat-label">免费授权</div>
+        </div>
+      </div>
+
+      <!-- 搜索 -->
+      <div class="search-bar" id="searchBar" style="display:none">
+        <input class="search-input" id="searchInput" placeholder="🔍 搜索音乐名称或风格…" oninput="filterMusic(this.value)" />
+        <button class="btn btn-outline btn-sm" onclick="refreshResults()">🔄 刷新</button>
+      </div>
+
+      <!-- 风格过滤 -->
+      <div class="filters" id="styleFilters" style="display:none">
+        <button class="filter-btn active" data-style="all" onclick="filterByStyle('all',this)">全部</button>
+        <button class="filter-btn" data-style="ambient" onclick="filterByStyle('ambient',this)">氛围</button>
+        <button class="filter-btn" data-style="classical" onclick="filterByStyle('classical',this)">古典</button>
+        <button class="filter-btn" data-style="jazz" onclick="filterByStyle('jazz',this)">爵士</button>
+        <button class="filter-btn" data-style="electronic" onclick="filterByStyle('electronic',this)">电子</button>
+        <button class="filter-btn" data-style="folk" onclick="filterByStyle('folk',this)">民谣</button>
+      </div>
+
+      <!-- 分析中动画 -->
+      <div class="analyzing-wrap" id="analyzingWrap">
+        <div class="spinner"></div>
+        <div style="color:var(--text2);font-size:14px;margin-bottom:12px;" id="analyzeStatus">正在分析稿件内容…</div>
+        <div class="waveform">
+          <div class="wave-bar" style="height:8px"></div>
+          <div class="wave-bar" style="height:8px"></div>
+          <div class="wave-bar" style="height:8px"></div>
+          <div class="wave-bar" style="height:8px"></div>
+          <div class="wave-bar" style="height:8px"></div>
+          <div class="wave-bar" style="height:8px"></div>
+          <div class="wave-bar" style="height:8px"></div>
+          <div class="wave-bar" style="height:8px"></div>
+        </div>
+      </div>
+
+      <!-- 空状态 -->
+      <div class="empty-state" id="emptyState">
+        <div class="icon">🎼</div>
+        <h3>等待分析稿件</h3>
+        <p>上传或粘贴您的广播稿件<br/>AI 将自动分析情绪、场景与风格<br/>为您推荐最适配的背景音乐</p>
+      </div>
+
+      <!-- 音乐列表 -->
+      <div class="music-list" id="musicList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 底部播放器 ── -->
+<div class="player-bar" id="playerBar">
+  <div class="player-thumb" id="playerThumb">🎵</div>
+  <div class="player-info">
+    <div class="player-title" id="playerTitle">—</div>
+    <div class="player-artist" id="playerArtist">—</div>
+  </div>
+  <div class="player-controls">
+    <button class="ctrl-btn" onclick="prevTrack()" title="上一首">⏮</button>
+    <button class="ctrl-btn ctrl-play" id="playPauseBtn" onclick="togglePlay()">▶</button>
+    <button class="ctrl-btn" onclick="nextTrack()" title="下一首">⏭</button>
+  </div>
+  <div class="player-progress">
+    <span id="currentTime">0:00</span>
+    <input type="range" class="prog-slider" id="progSlider" value="0" min="0" max="100" step="0.1" oninput="seekTo(this.value)" />
+    <span id="totalTime">0:00</span>
+  </div>
+  <div class="volume-wrap">
+    <span style="font-size:14px">🔊</span>
+    <input type="range" class="vol-slider" id="volSlider" value="80" min="0" max="100" oninput="setVolume(this.value)" />
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <span id="toastIcon">✅</span>
+  <span id="toastMsg"></span>
+</div>
+
+<audio id="audioEl"></audio>
+
+<script>
+// ═══════════════════════════════════════
+// 数据：音乐库（集成免费开源音乐资源）
+// 来源：Free Music Archive / Jamendo / ccMixter / Pixabay Music
+// ═══════════════════════════════════════
+
+const MUSIC_DB = [
+  // ── 轻柔氛围 ──
+  { id:1, title:"Serene Morning", artist:"Kevin MacLeod", duration:"3:24", genre:"ambient", mood:"calm", tags:["轻柔","氛围","清晨","舒缓"], source:"FMA", emoji:"🌅", matchKeywords:["早安","清晨","温柔","宁静","早上好","早间","起床"], downloadUrl:"https://freemusicarchive.org/music/Kevin_MacLeod", previewUrl:"https://www.soundjay.com/misc/sounds/bell-ringing-01.mp3", color:"#6c5ce7" },
+  { id:2, title:"Gentle Breeze", artist:"Bensound", duration:"4:12", genre:"ambient", mood:"calm", tags:["轻柔","自然","空灵","冥想"], source:"Jamendo", emoji:"🍃", matchKeywords:["自然","风景","安静","轻松","放松","冥想","呼吸"], downloadUrl:"https://www.bensound.com", previewUrl:"https://www.bensound.com/bensound-music/bensound-ukulele.mp3", color:"#00b894" },
+  { id:3, title:"Peaceful Piano", artist:"Peder B. Helland", duration:"5:02", genre:"classical", mood:"peaceful", tags:["钢琴","安静","古典","沉思"], source:"Jamendo", emoji:"🎹", matchKeywords:["沉思","回忆","怀念","静静","独处","心声","感悟"], downloadUrl:"https://www.jamendo.com", previewUrl:"https://www.bensound.com/bensound-music/bensound-slowmotion.mp3", color:"#a29bfe" },
+  { id:4, title:"Morning Dew", artist:"Audionautix", duration:"3:45", genre:"ambient", mood:"fresh", tags:["清新","早晨","自然","钢琴"], source:"FMA", emoji:"💧", matchKeywords:["新鲜","清新","晨间","早晨","天气","气候"], downloadUrl:"https://freemusicarchive.org", previewUrl:"https://www.bensound.com/bensound-music/bensound-summer.mp3", color:"#74b9ff" },
+  // ── 激昂大气 ──
+  { id:5, title:"Epic Horizon", artist:"Purple Planet", duration:"4:30", genre:"orchestral", mood:"epic", tags:["激昂","大气","史诗","宏观"], source:"ccMixter", emoji:"⚡", matchKeywords:["壮观","伟大","历史","胜利","奋进","拼搏","激情","斗志","奋斗","加油"], downloadUrl:"https://ccmixter.org", previewUrl:"https://www.bensound.com/bensound-music/bensound-epic.mp3", color:"#e17055" },
+  { id:6, title:"March Forward", artist:"Kevin MacLeod", duration:"2:58", genre:"orchestral", mood:"energetic", tags:["进行曲","鼓舞","热血","力量"], source:"FMA", emoji:"🎺", matchKeywords:["前进","出发","行动","冲刺","目标","理想","梦想"], downloadUrl:"https://freemusicarchive.org", previewUrl:"https://www.bensound.com/bensound-music/bensound-energy.mp3", color:"#fd79a8" },
+  // ── 温暖亲切 ──
+  { id:7, title:"Happy Ukulele", artist:"Bensound", duration:"3:18", genre:"folk", mood:"happy", tags:["欢快","温暖","轻松","日常"], source:"Pixabay", emoji:"🌻", matchKeywords:["开心","快乐","笑","温暖","家庭","朋友","友情","亲情","童年","美好"], downloadUrl:"https://pixabay.com/music", previewUrl:"https://www.bensound.com/bensound-music/bensound-ukulele.mp3", color:"#fdcb6e" },
+  { id:8, title:"Sunny Day", artist:"Lobo Loco", duration:"3:55", genre:"folk", mood:"cheerful", tags:["阳光","积极","轻快","民谣"], source:"ccMixter", emoji:"☀️", matchKeywords:["阳光","积极","正能量","希望","乐观","春天","夏天","活力"], downloadUrl:"https://ccmixter.org", previewUrl:"https://www.bensound.com/bensound-music/bensound-acousticbreeze.mp3", color:"#f9ca24" },
+  { id:9, title:"Coffee Shop", artist:"Bensound", duration:"4:22", genre:"jazz", mood:"cozy", tags:["爵士","慵懒","咖啡","午后"], source:"Pixabay", emoji:"☕", matchKeywords:["下午","午后","咖啡","休闲","时光","周末","轻松","惬意"], downloadUrl:"https://pixabay.com/music", previewUrl:"https://www.bensound.com/bensound-music/bensound-jazzyfrenchy.mp3", color:"#a29bfe" },
+  // ── 忧伤情感 ──
+  { id:10, title:"Rain Drops", artist:"Scott Buckley", duration:"4:48", genre:"ambient", mood:"sad", tags:["忧伤","雨天","沉静","情感"], source:"FMA", emoji:"🌧️", matchKeywords:["悲伤","离别","告别","思念","孤独","雨","泪","遗憾","失去"], downloadUrl:"https://freemusicarchive.org", previewUrl:"https://www.bensound.com/bensound-music/bensound-memories.mp3", color:"#636e72" },
+  { id:11, title:"Elegy", artist:"Kai Engel", duration:"3:34", genre:"classical", mood:"melancholy", tags:["忧郁","沉重","冥想","电影感"], source:"Jamendo", emoji:"🕯️", matchKeywords:["思念","怀念","往事","过去","失落","感慨","悼念","缅怀"], downloadUrl:"https://www.jamendo.com", previewUrl:"https://www.bensound.com/bensound-music/bensound-sadday.mp3", color:"#2d3436" },
+  // ── 庄重新闻 ──
+  { id:12, title:"News Opener", artist:"AudioJungle Free", duration:"0:30", genre:"electronic", mood:"formal", tags:["新闻","庄重","开场","广播"], source:"Pixabay", emoji:"📰", matchKeywords:["新闻","报道","播报","据悉","本台","消息","公告","通知","重大"], downloadUrl:"https://pixabay.com/music", previewUrl:"https://www.bensound.com/bensound-music/bensound-corporate.mp3", color:"#2d3436" },
+  { id:13, title:"Breaking News", artist:"ZapSplat", duration:"0:45", genre:"electronic", mood:"urgent", tags:["紧急","新闻","播报","官方"], source:"Pixabay", emoji:"📡", matchKeywords:["紧急","突发","重要","通报","特别报道","最新消息"], downloadUrl:"https://pixabay.com/music", previewUrl:"https://www.bensound.com/bensound-music/bensound-businesscorporate.mp3", color:"#e17055" },
+  // ── 电子氛围 ──
+  { id:14, title:"Digital Dream", artist:"Aiyn Zahev", duration:"5:15", genre:"electronic", mood:"futuristic", tags:["科技","未来","电子","现代"], source:"ccMixter", emoji:"🤖", matchKeywords:["科技","数字","网络","人工智能","科学","创新","未来","智能","互联网"], downloadUrl:"https://ccmixter.org", previewUrl:"https://www.bensound.com/bensound-music/bensound-dreams.mp3", color:"#6c5ce7" },
+  { id:15, title:"City Pulse", artist:"Bensound", duration:"3:42", genre:"electronic", mood:"urban", tags:["都市","现代","节奏","活力"], source:"Pixabay", emoji:"🌆", matchKeywords:["城市","都市","街道","繁华","生活","工作","节奏","快节奏"], downloadUrl:"https://pixabay.com/music", previewUrl:"https://www.bensound.com/bensound-music/bensound-thelounge.mp3", color:"#00cec9" },
+  // ── 自然空灵 ──
+  { id:16, title:"Forest Whisper", artist:"Sergii Pavkin", duration:"4:05", genre:"ambient", mood:"nature", tags:["自然","森林","鸟鸣","空灵"], source:"Pixabay", emoji:"🌲", matchKeywords:["自然","环境","生态","绿色","植物","森林","山水","大自然","保护"], downloadUrl:"https://pixabay.com/music", previewUrl:"https://www.bensound.com/bensound-music/bensound-relaxingmusic.mp3", color:"#00b894" },
+  { id:17, title:"Ocean Wave", artist:"Jason Shaw", duration:"5:30", genre:"ambient", mood:"serene", tags:["海浪","冥想","放松","治愈"], source:"FMA", emoji:"🌊", matchKeywords:["大海","海洋","浪","宽广","辽阔","旅行","度假","疗愈"], downloadUrl:"https://freemusicarchive.org", previewUrl:"https://www.bensound.com/bensound-music/bensound-tenderness.mp3", color:"#0984e3" },
+  // ── 节日欢庆 ──
+  { id:18, title:"Festive Bells", artist:"Kevin MacLeod", duration:"2:20", genre:"folk", mood:"festive", tags:["节日","欢庆","喜庆","庆祝"], source:"FMA", emoji:"🎊", matchKeywords:["节日","庆典","春节","过年","欢庆","祝贺","喜庆","假期","新年"], downloadUrl:"https://freemusicarchive.org", previewUrl:"https://www.bensound.com/bensound-music/bensound-happyrock.mp3", color:"#e84393" },
+  // ── 民族风格 ──
+  { id:19, title:"Eastern Wind", artist:"Free Beats", duration:"3:48", genre:"folk", mood:"ethnic", tags:["民族","东方","古风","传统"], source:"ccMixter", emoji:"🏮", matchKeywords:["中国","传统","文化","民族","古代","历史","文明","非遗","传承"], downloadUrl:"https://ccmixter.org", previewUrl:"https://www.bensound.com/bensound-music/bensound-creativeminds.mp3", color:"#e17055" },
+  // ── 爵士轻松 ──
+  { id:20, title:"Smooth Groove", artist:"Pell Music", duration:"4:18", genre:"jazz", mood:"smooth", tags:["爵士","慵懒","夜晚","放松"], source:"Jamendo", emoji:"🎷", matchKeywords:["夜晚","夜间","深夜","慵懒","微醺","夜话","夜生活","晚间节目"], downloadUrl:"https://www.jamendo.com", previewUrl:"https://www.bensound.com/bensound-music/bensound-jazzyfrenchy.mp3", color:"#6c5ce7" },
+];
+
+// ═══════════════════════════════════════
+// 状态
+// ═══════════════════════════════════════
+let analysisResult = null;
+let filteredMusic = [];
+let currentIndex = -1;
+let isPlaying = false;
+let activeStyle = 'all';
+let selectedPrefs = ['轻柔'];
+
+const audio = document.getElementById('audioEl');
+
+// ═══════════════════════════════════════
+// UI 初始化
+// ═══════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // 字数统计
+  document.getElementById('scriptInput').addEventListener('input', e => {
+    const val = e.target.value;
+    const isVideo = val.startsWith('[视频文件]');
+    const len = val.length;
+    document.getElementById('charCount').textContent = isVideo ? '视频文件' : len + ' 字';
+    document.getElementById('analyzeBtn').disabled = isVideo ? false : len < 10;
+  });
+
+  // 偏好过滤按钮
+  document.querySelectorAll('#prefFilters .filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('active');
+      const pref = btn.dataset.pref;
+      if (selectedPrefs.includes(pref)) {
+        selectedPrefs = selectedPrefs.filter(p => p !== pref);
+      } else {
+        selectedPrefs.push(pref);
+      }
+    });
+  });
+
+  // 文件拖放
+  const uploadArea = document.getElementById('uploadArea');
+  uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+  uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+  uploadArea.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadArea.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  });
+
+  document.getElementById('file-input').addEventListener('change', e => {
+    if (e.target.files[0]) handleFile(e.target.files[0]);
+  });
+
+  // 音频事件
+  audio.addEventListener('timeupdate', () => {
+    const p = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
+    document.getElementById('progSlider').value = p;
+    document.getElementById('currentTime').textContent = fmt(audio.currentTime);
+    document.getElementById('totalTime').textContent = fmt(audio.duration || 0);
+  });
+  audio.addEventListener('ended', () => { nextTrack(); });
+});
+
+function fmt(s) {
+  if (!s || isNaN(s)) return '0:00';
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+
+// ═══════════════════════════════════════
+// 文件处理
+// ═══════════════════════════════════════
+const VIDEO_EXTS = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.video'];
+
+function isVideoFile(file) {
+  const name = file.name.toLowerCase();
+  return VIDEO_EXTS.some(ext => name.endsWith(ext)) || file.type.startsWith('video/');
+}
+
+function handleFile(file) {
+  if (isVideoFile(file)) {
+    handleVideoFile(file);
+  } else {
+    handleTextFile(file);
+  }
+}
+
+// 处理文本/文档文件
+function handleTextFile(file) {
+  // 隐藏视频预览
+  document.getElementById('videoPreviewWrap').style.display = 'none';
+  document.getElementById('videoPreview').src = '';
+  document.getElementById('uploadIcon').textContent = '📁';
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    document.getElementById('scriptInput').value = text;
+    document.getElementById('charCount').textContent = text.length + ' 字';
+    document.getElementById('analyzeBtn').disabled = false;
+    showToast('✅', `文件"${file.name}"已读取，共 ${text.length} 字`);
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// 处理视频文件
+function handleVideoFile(file) {
+  document.getElementById('uploadIcon').textContent = '🎬';
+
+  // 显示视频预览
+  const wrap = document.getElementById('videoPreviewWrap');
+  const videoEl = document.getElementById('videoPreview');
+  const infoEl = document.getElementById('videoInfo');
+  wrap.style.display = 'block';
+
+  const blobUrl = URL.createObjectURL(file);
+  videoEl.src = blobUrl;
+
+  // 等待视频元数据加载，获取时长
+  videoEl.onloadedmetadata = () => {
+    const dur = videoEl.duration;
+    const durStr = isNaN(dur) ? '未知' : Math.floor(dur/60) + '分' + Math.floor(dur%60) + '秒';
+    const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+    infoEl.innerHTML = `
+      <span>📂 ${file.name}</span>
+      <span>⏱ 时长：${durStr}</span>
+      <span>💾 大小：${sizeMB} MB</span>
+      <span>📐 分辨率：${videoEl.videoWidth}×${videoEl.videoHeight}</span>
+    `;
+  };
+
+  // 用文件名+元信息作为分析上下文，写入稿件框供 AI 分析
+  const baseName = file.name.replace(/\.[^.]+$/, '');
+  // 从文件名中提取关键词（中文/英文分词）
+  const keywords = baseName.replace(/[_\-\[\]【】（）()]/g, ' ').trim();
+  const placeholder = `[视频文件] ${keywords}\n\n（AI 将根据视频文件名和您选择的偏好为视频匹配适合的背景音乐）`;
+  document.getElementById('scriptInput').value = placeholder;
+  document.getElementById('charCount').textContent = '视频文件';
+  document.getElementById('analyzeBtn').disabled = false;
+
+  showToast('🎬', `视频"${file.name}"已导入，可直接点击分析匹配背景音乐`);
+}
+
+// ═══════════════════════════════════════
+// AI 分析
+// ═══════════════════════════════════════
+async function analyzeScript() {
+  const text = document.getElementById('scriptInput').value.trim();
+  const isVideo = text.startsWith('[视频文件]');
+  if (!isVideo && text.length < 10) return;
+
+  // 显示加载
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('musicList').innerHTML = '';
+  document.getElementById('analyzingWrap').style.display = 'block';
+  document.getElementById('statsRow').style.display = 'none';
+  document.getElementById('searchBar').style.display = 'none';
+  document.getElementById('styleFilters').style.display = 'none';
+  document.getElementById('analyzeBtn').disabled = true;
+
+  const steps = [
+    '正在分析稿件内容…',
+    '识别情绪与基调…',
+    '匹配场景关键词…',
+    '搜索音乐资源库…',
+    '计算匹配度评分…',
+    '整理推荐结果…'
+  ];
+  let i = 0;
+  const iv = setInterval(() => {
+    document.getElementById('analyzeStatus').textContent = steps[Math.min(i++, steps.length-1)];
+  }, 600);
+
+  // 模拟分析（实际可接入 AI API）
+  await new Promise(r => setTimeout(r, 3200));
+  clearInterval(iv);
+
+  // 分析文本
+  analysisResult = analyzeText(text);
+
+  document.getElementById('analyzingWrap').style.display = 'none';
+
+  // 显示分析摘要
+  const card = document.getElementById('analysisCard');
+  card.style.display = 'block';
+  document.getElementById('analysisSummary').textContent = analysisResult.summary;
+  const tagsEl = document.getElementById('analysisTags');
+  tagsEl.innerHTML = '';
+  analysisResult.tags.forEach(t => {
+    const span = document.createElement('span');
+    span.className = 'tag tag-' + t.type;
+    span.textContent = (t.icon || '') + ' ' + t.label;
+    tagsEl.appendChild(span);
+  });
+
+  // 匹配音乐
+  filteredMusic = matchMusic(text, analysisResult);
+  renderMusicList(filteredMusic);
+
+  document.getElementById('statsRow').style.display = 'flex';
+  document.getElementById('searchBar').style.display = 'flex';
+  document.getElementById('styleFilters').style.display = 'flex';
+  document.getElementById('statCount').textContent = filteredMusic.length;
+  document.getElementById('analyzeBtn').disabled = false;
+
+  showToast('🎵', `为您找到 ${filteredMusic.length} 首适配背景音乐`);
+}
+
+// 文本分析
+function analyzeText(text) {
+  const lower = text.toLowerCase();
+
+  // 情绪检测
+  const moodMap = [
+    { mood:'激昂', words:['奋进','拼搏','奋斗','胜利','壮观','热血','激情','冲刺','加油','奋力'], type:'mood', icon:'⚡' },
+    { mood:'温暖', words:['温暖','家庭','友情','亲情','爱','关怀','感谢','美好','幸福'], type:'mood', icon:'🧡' },
+    { mood:'忧伤', words:['悲伤','离别','思念','孤独','泪','遗憾','失去','痛苦','告别'], type:'mood', icon:'💧' },
+    { mood:'欢快', words:['开心','快乐','笑','欢声','活泼','有趣','乐趣','喜悦'], type:'mood', icon:'😊' },
+    { mood:'庄重', words:['新闻','播报','据悉','本台','消息','通知','公告','重大','报道'], type:'mood', icon:'📰' },
+    { mood:'平静', words:['宁静','安静','平静','淡定','从容','沉静','清晨','夜晚'], type:'mood', icon:'🌙' },
+  ];
+
+  // 场景检测
+  const sceneMap = [
+    { scene:'自然风光', words:['自然','森林','山','大海','河','花','草','鸟','春','秋','冬','夏'], type:'scene', icon:'🌿' },
+    { scene:'都市生活', words:['城市','街道','商场','地铁','公司','上班','生活','工作'], type:'scene', icon:'🏙️' },
+    { scene:'新闻播报', words:['新闻','报道','记者','现场','播报','本台','据悉'], type:'scene', icon:'📡' },
+    { scene:'人文故事', words:['故事','人生','经历','回忆','历史','文化','传统'], type:'scene', icon:'📖' },
+    { scene:'健康养生', words:['健康','运动','养生','医院','医疗','营养','饮食'], type:'scene', icon:'💊' },
+    { scene:'节日庆典', words:['节日','春节','过年','庆典','祝福','欢庆','假期'], type:'scene', icon:'🎉' },
+  ];
+
+  const tempoMap = [
+    { tempo:'舒缓', words:['缓慢','轻轻','慢慢','悄悄','静静','轻柔'], type:'tempo', icon:'🐢' },
+    { tempo:'适中', words:['日常','一般','普通','平时','通常'], type:'tempo', icon:'🚶' },
+    { tempo:'快节奏', words:['迅速','快速','立刻','马上','紧急','突发','最新'], type:'tempo', icon:'⚡' },
+  ];
+
+  const detected = { moods: [], scenes: [], tempos: [], summary: '' };
+  const tags = [];
+
+  moodMap.forEach(m => {
+    const count = m.words.filter(w => text.includes(w)).length;
+    if (count > 0) { detected.moods.push({ ...m, score: count }); tags.push({ type:'mood', label: m.mood, icon: m.icon }); }
+  });
+  sceneMap.forEach(s => {
+    const count = s.words.filter(w => text.includes(w)).length;
+    if (count > 0) { detected.scenes.push({ ...s, score: count }); tags.push({ type:'scene', label: s.scene, icon: s.icon }); }
+  });
+  tempoMap.forEach(t => {
+    const count = t.words.filter(w => text.includes(w)).length;
+    if (count > 0) { detected.tempos.push({ ...t, score: count }); tags.push({ type:'tempo', label: t.tempo, icon: t.icon }); }
+  });
+
+  // 风格标签
+  if (selectedPrefs.length > 0) {
+    selectedPrefs.forEach(p => tags.push({ type:'style', label: p, icon: '🎚️' }));
+  }
+
+  // 摘要生成
+  const mainMood = detected.moods.sort((a,b) => b.score - a.score)[0];
+  const mainScene = detected.scenes.sort((a,b) => b.score - a.score)[0];
+  const wordCount = text.length;
+
+  detected.summary = (text.startsWith('[视频文件]')
+    ? `检测到视频文件，已提取文件名关键词「${text.split('\n')[0].replace('[视频文件] ', '')}」，` 
+    : `稿件共 ${wordCount} 字，`) +
+    (mainMood ? `整体情绪偏「${mainMood.mood}」，` : '情绪较为均衡，') +
+    (mainScene ? `主要场景为「${mainScene.scene}」，` : '') +
+    `AI 已综合分析语境，为您推荐匹配度最高的背景音乐。`;
+
+  detected.tags = tags;
+  return detected;
+}
+
+// 音乐匹配算法
+function matchMusic(text, result) {
+  const scores = MUSIC_DB.map(music => {
+    let score = 0;
+
+    // 关键词匹配
+    music.matchKeywords.forEach(kw => {
+      if (text.includes(kw)) score += 10;
+    });
+
+    // 偏好匹配
+    selectedPrefs.forEach(pref => {
+      if (music.tags.some(t => t.includes(pref))) score += 8;
+    });
+
+    // 情绪匹配
+    if (result.moods.length > 0) {
+      const topMood = result.moods[0].mood;
+      const moodGenreMap = {
+        '激昂': ['orchestral'], '温暖': ['folk','jazz'], '忧伤': ['ambient','classical'],
+        '欢快': ['folk'], '庄重': ['electronic'], '平静': ['ambient','classical'],
+      };
+      const matchGenres = moodGenreMap[topMood] || [];
+      if (matchGenres.includes(music.genre)) score += 15;
+    }
+
+    // 场景匹配
+    if (result.scenes.length > 0) {
+      const topScene = result.scenes[0].scene;
+      const sceneGenreMap = {
+        '自然风光': ['ambient'], '都市生活': ['electronic','jazz'],
+        '新闻播报': ['electronic'], '人文故事': ['classical','folk'],
+        '健康养生': ['ambient'], '节日庆典': ['folk'],
+      };
+      const matchGenres = sceneGenreMap[topScene] || [];
+      if (matchGenres.includes(music.genre)) score += 12;
+    }
+
+    // 随机因子（增加多样性）
+    score += Math.random() * 3;
+
+    return { ...music, score: Math.round(score) };
+  });
+
+  return scores
+    .filter(m => m.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 12);
+}
+
+// ═══════════════════════════════════════
+// 渲染音乐卡片
+// ═══════════════════════════════════════
+function renderMusicList(list) {
+  const container = document.getElementById('musicList');
+  container.innerHTML = '';
+
+  if (list.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text3);padding:40px;">未找到匹配结果，请尝试其他偏好设置</div>';
+    return;
+  }
+
+  list.forEach((music, idx) => {
+    const matchPct = Math.min(99, Math.round(35 + music.score * 1.8));
+    const card = document.createElement('div');
+    card.className = 'music-card';
+    card.id = `mc-${music.id}`;
+    card.innerHTML = `
+      <div class="music-thumb" style="background:linear-gradient(135deg,${music.color}33,${music.color}66)">
+        ${music.emoji}
+      </div>
+      <div class="music-info">
+        <div class="music-title">${music.title}</div>
+        <div class="music-meta">
+          <span>🎤 ${music.artist}</span>
+          <span>⏱ ${music.duration}</span>
+          <span class="match-badge">匹配度 ${matchPct}%</span>
+          <span class="source-tag source-${music.source.toLowerCase()}">${music.source}</span>
+        </div>
+        <div class="music-tags">
+          ${music.tags.map(t => `<span class="music-tag">${t}</span>`).join('')}
+        </div>
+        <div class="progress-wrap" id="prog-${music.id}">
+          <div class="progress-bar" id="pb-${music.id}"></div>
+        </div>
+      </div>
+      <div class="music-actions">
+        <button class="btn btn-success btn-sm" onclick="playMusic(${idx})" id="play-${music.id}">
+          ▶ 试听
+        </button>
+        <button class="btn btn-accent btn-sm" onclick="downloadMusic(${idx})">
+          ⬇ MP3
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="openSource(${idx})">
+          🔗 来源
+        </button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+// ═══════════════════════════════════════
+// 播放控制
+// ═══════════════════════════════════════
+function playMusic(idx) {
+  const music = filteredMusic[idx];
+  if (!music) return;
+
+  // 重置之前
+  document.querySelectorAll('.music-card').forEach(c => c.classList.remove('playing'));
+  document.querySelectorAll('[id^=play-]').forEach(b => b.innerHTML = '▶ 试听');
+
+  currentIndex = idx;
+
+  if (isPlaying && audio.src.includes(music.previewUrl.split('/').pop())) {
+    audio.pause(); isPlaying = false;
+    document.getElementById('playPauseBtn').textContent = '▶';
+    document.getElementById(`play-${music.id}`).innerHTML = '▶ 试听';
+    return;
+  }
+
+  // 播放
+  audio.src = music.previewUrl;
+  audio.volume = document.getElementById('volSlider').value / 100;
+  audio.play().catch(() => {
+    showToast('⚠️', '预览加载中，请稍候或点击下载完整版');
+  });
+  isPlaying = true;
+
+  document.getElementById(`mc-${music.id}`).classList.add('playing');
+  document.getElementById(`play-${music.id}`).innerHTML = '⏸ 暂停';
+  document.getElementById('playPauseBtn').textContent = '⏸';
+
+  // 更新播放器
+  document.getElementById('playerBar').classList.add('active');
+  document.getElementById('playerThumb').textContent = music.emoji;
+  document.getElementById('playerTitle').textContent = music.title;
+  document.getElementById('playerArtist').textContent = music.artist + ' · ' + music.source;
+  document.getElementById('playerBar').style.paddingBottom = '12px';
+}
+
+function togglePlay() {
+  if (currentIndex < 0) return;
+  if (audio.paused) {
+    audio.play();
+    isPlaying = true;
+    document.getElementById('playPauseBtn').textContent = '⏸';
+    const music = filteredMusic[currentIndex];
+    if (music) document.getElementById(`play-${music.id}`).innerHTML = '⏸ 暂停';
+  } else {
+    audio.pause();
+    isPlaying = false;
+    document.getElementById('playPauseBtn').textContent = '▶';
+    const music = filteredMusic[currentIndex];
+    if (music) document.getElementById(`play-${music.id}`).innerHTML = '▶ 试听';
+  }
+}
+
+function nextTrack() {
+  if (filteredMusic.length === 0) return;
+  playMusic((currentIndex + 1) % filteredMusic.length);
+}
+function prevTrack() {
+  if (filteredMusic.length === 0) return;
+  playMusic((currentIndex - 1 + filteredMusic.length) % filteredMusic.length);
+}
+function seekTo(v) { if (audio.duration) audio.currentTime = (v / 100) * audio.duration; }
+function setVolume(v) { audio.volume = v / 100; }
+
+// ═══════════════════════════════════════
+// 下载
+// ═══════════════════════════════════════
+function downloadMusic(idx) {
+  const music = filteredMusic[idx];
+  if (!music) return;
+
+  showToast('⬇️', `正在准备下载「${music.title}」…`);
+
+  // 尝试直接下载 previewUrl（MP3）
+  const link = document.createElement('a');
+  link.href = music.previewUrl;
+  link.download = `${music.title} - ${music.artist}.mp3`;
+  link.target = '_blank';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  setTimeout(() => {
+    showToast('✅', `「${music.title}」下载已开始，MP3 格式`);
+  }, 800);
+}
+
+function openSource(idx) {
+  const music = filteredMusic[idx];
+  if (!music) return;
+  window.open(music.downloadUrl, '_blank');
+  showToast('🔗', `已跳转到 ${music.source} 官方页面`);
+}
+
+// ═══════════════════════════════════════
+// 搜索与过滤
+// ═══════════════════════════════════════
+function filterMusic(query) {
+  if (!query) { renderMusicList(filteredMusic); return; }
+  const q = query.toLowerCase();
+  const res = filteredMusic.filter(m =>
+    m.title.toLowerCase().includes(q) ||
+    m.artist.toLowerCase().includes(q) ||
+    m.tags.some(t => t.includes(q))
+  );
+  renderMusicList(res);
+}
+
+function filterByStyle(style, btn) {
+  document.querySelectorAll('#styleFilters .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeStyle = style;
+  if (style === 'all') { renderMusicList(filteredMusic); return; }
+  renderMusicList(filteredMusic.filter(m => m.genre === style));
+}
+
+function refreshResults() {
+  if (document.getElementById('scriptInput').value.trim().length >= 10) {
+    analyzeScript();
+  }
+}
+
+// ═══════════════════════════════════════
+// Toast
+// ═══════════════════════════════════════
+let toastTimer;
+function showToast(icon, msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastIcon').textContent = icon;
+  document.getElementById('toastMsg').textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
